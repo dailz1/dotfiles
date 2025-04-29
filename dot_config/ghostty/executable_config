@@ -1,0 +1,103 @@
+# 设置字体和大小
+# font-family = SpaceMono Nerd Font
+font-family = Maple Mono  Normal NF CN
+font-size = 16
+# 鼠标和剪贴板
+# 在键入时立即隐藏鼠标
+mouse-hide-while-typing = true
+# 窗口和界面
+# 设置新窗口和标签是否继承之前窗口的工作目录
+window-inherit-working-directory = true
+window-subtitle = false
+# 设置是否与屏幕刷新率同步渲染
+window-vsync = true
+
+# 设置是否启用保存和恢复窗口状态。有效值为default， never和always
+window-save-state = "always"
+
+# 设置窗口的主题。有效值为 auto, system, light, dark, 和 ghostty
+window-theme = "dark"
+
+#custom-shader = shaders/dither.glsl
+#custom-shader = shaders/glow1.glsl
+#custom-shader = shaders/animated-gradient-shader.glsl
+#custom-shader = shaders/gradient-background.glsl
+#custom-shader = shaders/starfield-colors.glsl
+#custom-shader = shaders/mnoise.glsl
+#custom-shader = shaders/just-snow.glsl
+# 是否允许终端中的程序读取剪贴板
+clipboard-read = allow
+clipboard-write = allow
+
+# 初始化时的窗口大小
+window-height = 60
+window-width = 269
+
+# 光标
+cursor-style = "bar"
+cursor-style-blink = true
+cursor-color = #f7768e
+# 光标下的文本颜色
+cursor-text = #150cdb
+
+# 字节中的滚动缓冲区大小
+scrollback-limit = 100000
+
+
+# 背景色或普通文字， git的字体颜色
+palette = 0=#112D4E
+
+# 错误信息或警告
+palette = 1=#f08778
+
+# 成功信息或状态,git信息，tmux状态栏底色（好像不是），ll显示目录的底色
+palette = 2=#D3E0DC
+
+# 警告或提示
+palette = 3=#fdcc60
+
+# 文件名、路径等信息
+palette = 4=#2973B2
+
+# 辅助或状态信息
+palette = 5=#ec7171
+
+# 命令输出或关键状态
+palette = 6=#98e6ca
+
+# 高亮显示或默认文字颜色
+palette = 7=#3FC1C9
+
+# 低亮度的背景或注释
+palette = 8=#686868
+
+# 更显眼的错误或警告
+palette = 9=#FFEB00
+
+# 重点成功状态
+palette = 10=#58c49c
+
+# 更显眼的提示或警告
+palette = 11=#ffd165
+
+# 更显眼的路径或信息
+palette = 12=#65bddb
+
+# 强调状态信息
+palette = 13=#f17676
+
+# 强调的命令输出
+palette = 14=#9debcf
+
+#　高亮重要文字
+palette = 15=#ffffff
+
+#设置前景和背景
+background = #1f2430
+foreground = #cbccc6
+#foreground = #FFFBE9
+# 设置主题
+#theme = Abernathy
+#theme = MaterialDarker
+# 设置背景不透明度
+#background-opacity = 0.9
