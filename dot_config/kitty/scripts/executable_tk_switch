@@ -1,0 +1,99 @@
+#!/bin/sh
+
+
+# TMUX_SCRIPTS="$HOME/.config/kitty/scripts" 
+source ~/.bashrc 2>/dev/null || source ~/.zshrc 2>/dev/null
+
+debug() {
+    # echo "[DEBUG] $1" >> /tmp/kitty-tmux-test.log
+    # kitty @ notify --title "tk_switch" --body "$msg"
+    # 同时输出到日志文件（可选）
+    echo "[DEBUG] $1" >> /tmp/tk_switch.log
+    echo "[DEBUG] $1"
+}
+
+# 添加函数来获取 kitty socket 文件
+get_kitty_socket() {
+    # 查找所有 kitty socket 文件
+    local socket_files=(/tmp/kitty-*)
+    if [ -e "${socket_files[0]}" ]; then
+        echo "${socket_files[0]}"
+        return 0
+    fi
+    return 1
+}
+
+is_in_tmux() {
+    debug "开始检测 tmux 状态"
+    debug "KITTY_WINDOW_ID: $KITTY_WINDOW_ID"
+    debug "TMUX: $TMUX"
+    # 首先检查是否在 tmux 会话中
+    if [[ -n "$TMUX" ]]; then
+        debug "检测到 TMUX 环境变量，返回 0"
+        return 0
+    fi
+    
+    # 检查是否在 kitty 会话中
+    if [[ -n "$KITTY_WINDOW_ID" ]]; then
+        debug "检测到 KITTY_WINDOW_ID，返回 1"
+        return 1
+    fi
+    debug "未检测到 TMUX 或 KITTY_WINDOW_ID，返回 2"
+    return 2
+}
+
+# 运行 kitty 的 run_action.py 脚本，来执行按键映射
+kitty_run_action() {
+  kitty @ kitten run_action.py "$@"
+}
+
+# 创建分屏的函数
+# 分别在 tmux 和 kitty 中实现，水平和垂直两种方向
+# 在 tmux 中，创建一个水平分屏，并保持当前路径
+tmux_hsplit() {
+    tmux split-window -h -c "#{pane_current_path}"
+}
+
+# 在 tmux 中，创建一个垂直分屏，并保持当前路径
+tmux_vsplit() {
+    tmux split-window -v -c "#{pane_current_path}"
+}
+
+# 在 kitty 中，创建一个水平分屏，并保持当前路径
+kitty_hsplit() {
+    kitty @ launch --cwd=current --location=vsplit
+}
+
+# 在 kitty 中，创建一个垂直分屏，并保持当前路径
+kitty_vsplit() {
+    kitty @ launch --cwd=current --location=hsplit
+}
+
+# 切换窗口
+# 分别在 tmux 和 kitty 中实现，上下左右四个方向
+kitty_window_up() {
+    kitty_run_action "neighboring_window up"
+}
+
+tmux_window_up() {
+    tmux select-pane -U
+}
+
+
+
+main() {
+  local cmd="$1"
+  shift 1
+
+  local func="kitty_${cmd}"
+  is_in_tmux
+  local in_tmux=$?
+
+  debug "in_tmux: $in_tmux"
+  if [[ $in_tmux -eq 0 ]]; then
+    func="tmux_${cmd}"
+  fi
+  eval "$func $*"
+}
+
+main "$@"
