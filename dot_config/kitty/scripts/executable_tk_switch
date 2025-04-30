@@ -1,16 +1,21 @@
-#!/bin/sh
+#!/bin/bash
 
+# 调试函数
+debug() {
+    # 同时输出到日志文件（可选）
+    echo "[DEBUG] $1" >> ~/.config/kitty/scripts/tk_switch.log
+    echo "[DEBUG] $1"
+}
+
+# 添加调试信息
+debug "Debug: 脚本开始执行" 
+debug "Debug: TMUX='${TMUX}'" 
+debug "Debug: TERM='${TERM}'" 
+debug "Debug: PPID='${PPID}'" 
+debug "Debug: 父进程命令: '$(ps -p $PPID -o command=)'" 
 
 # TMUX_SCRIPTS="$HOME/.config/kitty/scripts" 
 source ~/.bashrc 2>/dev/null || source ~/.zshrc 2>/dev/null
-
-debug() {
-    # echo "[DEBUG] $1" >> /tmp/kitty-tmux-test.log
-    # kitty @ notify --title "tk_switch" --body "$msg"
-    # 同时输出到日志文件（可选）
-    echo "[DEBUG] $1" >> /tmp/tk_switch.log
-    echo "[DEBUG] $1"
-}
 
 # 添加函数来获取 kitty socket 文件
 get_kitty_socket() {
@@ -23,13 +28,21 @@ get_kitty_socket() {
     return 1
 }
 
+
 is_in_tmux() {
     debug "开始检测 tmux 状态"
-    debug "KITTY_WINDOW_ID: $KITTY_WINDOW_ID"
-    debug "TMUX: $TMUX"
-    # 首先检查是否在 tmux 会话中
-    if [[ -n "$TMUX" ]]; then
-        debug "检测到 TMUX 环境变量，返回 0"
+    debug "KITTY_WINDOW_ID: '${KITTY_WINDOW_ID}'"
+    
+    # 获取当前 shell 的会话 ID
+    local shell_sid=$(ps -o sid= $$)
+    debug "当前 shell SID: $shell_sid"
+    
+    # 检查会话中是否有 tmux
+    local session_info=$(ps -o pid,command -s $shell_sid)
+    debug "会话信息: $session_info"
+    
+    if [[ "$session_info" == *"tmux"* ]]; then
+        debug "检测到 tmux 进程，返回 0"
         return 0
     fi
     
@@ -38,7 +51,7 @@ is_in_tmux() {
         debug "检测到 KITTY_WINDOW_ID，返回 1"
         return 1
     fi
-    debug "未检测到 TMUX 或 KITTY_WINDOW_ID，返回 2"
+    debug "未检测到 tmux 或 kitty 环境，返回 2"
     return 2
 }
 
