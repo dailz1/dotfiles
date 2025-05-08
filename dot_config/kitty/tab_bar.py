@@ -14,21 +14,27 @@ from kitty.tab_bar import (
     draw_attributed_string,
     draw_title,
 )
+from kitty.fast_data_types import wcswidth
+import os
+import socket
 
-# 直接定义颜色值
-icon_fg = as_rgb(0x112D4E)  # 深蓝色
-icon_bg = as_rgb(0xFFFBE9)  # 米色
-date_color = as_rgb(0x222831)  # 深灰色
-cpu_color = as_rgb(0x222831)  # 深灰色
-net_color = as_rgb(0x222831)  # 深灰色
 
-SEPARATOR_SYMBOL, SOFT_SEPARATOR_SYMBOL = ("", "")
-RIGHT_SEPARATOR_SYMBOL = ""
-
-RIGHT_MARGIN = 3
+# 刷新间隔
 REFRESH_TIME = 1
-ICON_LEFT = "👻 dailz-fedora  "
-ICON_RIGHT = "🤡 "
+
+# 图标
+ICON_LEFT = " 👻 "
+ICON_RIGHT = " 🤡 "
+
+# 颜色
+BG = as_rgb(0x112D4E) # 深蓝色
+FG = as_rgb(0xF5F0CD) # 米色
+ACTIVE_BG = as_rgb(0x00ADB5)    # 浅蓝色
+RIGHT_BG = as_rgb(0xff9494) # 粉色
+
+# 分隔符
+LEFT_SEPARATOR_SYMBOL = ""
+RIGHT_SEPARATOR_SYMBOL = ""
 
 WEEKDAYS = {
     0: "周一",
@@ -40,102 +46,94 @@ WEEKDAYS = {
     6: "周日"
 }
 
-
-# 网络速度统计
-last_net_stats = {'rx_bytes': 0, 'tx_bytes': 0, 'time': 0}
-
-def format_bytes(bytes_per_sec):
-    if bytes_per_sec < 1024:
-        return f"{bytes_per_sec:.1f}B/s"
-    elif bytes_per_sec < 1024 * 1024:
-        return f"{bytes_per_sec/1024:.1f}K/s"
-    else:
-        return f"{bytes_per_sec/(1024*1024):.1f}M/s"
-
-def get_net_bytes():
+# 获取主机信息
+def get_host_info() -> str:
     try:
-        # 尝试使用 ip 命令
-        result = subprocess.run(['ip', '-s', 'link'], capture_output=True, text=True)
-        if result.returncode == 0:
-            lines = result.stdout.split('\n')
-            rx_bytes = 0
-            tx_bytes = 0
-            for i, line in enumerate(lines):
-                if 'RX:' in line and i + 1 < len(lines):
-                    rx_line = lines[i + 1].strip()
-                    rx_bytes = int(rx_line.split()[0])
-                elif 'TX:' in line and i + 1 < len(lines):
-                    tx_line = lines[i + 1].strip()
-                    tx_bytes = int(tx_line.split()[0])
-            return rx_bytes, tx_bytes
-        
-        # 如果 ip 命令失败，尝试使用 ifconfig
-        result = subprocess.run(['ifconfig'], capture_output=True, text=True)
-        if result.returncode == 0:
-            lines = result.stdout.split('\n')
-            rx_bytes = 0
-            tx_bytes = 0
-            for line in lines:
-                if 'RX packets' in line:
-                    rx_bytes = int(line.split('bytes')[1].split()[0])
-                elif 'TX packets' in line:
-                    tx_bytes = int(line.split('bytes')[1].split()[0])
-            return rx_bytes, tx_bytes
+        username = os.getenv('USER', 'unknown')
+        hostname = socket.gethostname()
+        return f"{username}:{hostname}"
     except:
-        pass
-    return 0, 0
+        return "unknown:localhost"
 
-def get_net_speed() -> str:
+# 获取cpu使用率
+last_cpu_stats = None
+last_cpu_time = 0
+last_cpu_usage = 0
+def get_cpu_usage_proc() -> str:
+    global last_cpu_stats, last_cpu_time, last_cpu_usage
     try:
-        current_time = time.time()
-        rx_bytes, tx_bytes = get_net_bytes()
-        
-        if last_net_stats['time'] > 0:
-            time_diff = current_time - last_net_stats['time']
-            if time_diff > 0.5:  # 确保时间差至少0.5秒
-                rx_diff = rx_bytes - last_net_stats['rx_bytes']
-                tx_diff = tx_bytes - last_net_stats['tx_bytes']
-                
-                rx_speed = rx_diff / time_diff
-                tx_speed = tx_diff / time_diff
-                
-                # 更新统计信息
-                last_net_stats.update({
-                    'rx_bytes': rx_bytes,
-                    'tx_bytes': tx_bytes,
-                    'time': current_time
-                })
-                
-                return f"↓{format_bytes(rx_speed)} ↑{format_bytes(tx_speed)} "
-            else:
-                return f"↓{format_bytes(0)} ↑{format_bytes(0)} "
-        
-        # 第一次运行
-        last_net_stats.update({
-            'rx_bytes': rx_bytes,
-            'tx_bytes': tx_bytes,
-            'time': current_time
-        })
-        return "↓0B/s ↑0B/s "
+        with open('/proc/stat') as f:
+            line = f.readline()
+        fields = [int(x) for x in line.split()[1:]]
+        now = time.time()
+        if last_cpu_stats is not None and now - last_cpu_time > 0.5:
+            total = sum(fields) - sum(last_cpu_stats)
+            idle = fields[3] - last_cpu_stats[3]
+            usage = 100 - (idle * 100 / total) if total > 0 else 0
+            last_cpu_usage = usage
+        # 如果采样间隔太短，直接返回上一次 usage
+        else:
+            usage = last_cpu_usage
+        last_cpu_stats = fields
+        last_cpu_time = now
+        return f"CPU:{usage:.1f}%"
     except Exception as e:
-        print(f"Network speed error: {e}")
-        return "↓N/A ↑N/A "
-    return "↓N/A ↑N/A "
+        return "CPU:N/A"
+
+# 获取内存使用率
+def get_mem_usage() -> str:
+    try:
+        result = subprocess.run(
+            "free -m | grep Mem",
+            shell=True, capture_output=True, text=True
+        )
+        parts = result.stdout.split()
+        total = float(parts[1]) / 1024  # MB 转 GB
+        used = float(parts[2]) / 1024   # MB 转 GB
+        percent = used / total * 100
+        return f"Mem:{percent:.0f}%"
+    except Exception as e:
+        return "Mem: N/A"
+
+# 获取时间
+def get_date() -> str:
+    now = datetime.now()
+    return f"{WEEKDAYS[now.weekday()]} {now.strftime('%m-%d %H:%M:%S')}"
+
+# 刷新标签栏
+def _redraw_tab_bar(_):
+    tm = get_boss().active_tab_manager
+    if tm is not None:
+        tm.mark_tab_bar_dirty()
 
 def _draw_icon(screen: Screen, index: int) -> int:
     if index != 1:
         return 0
-    fg, bg = screen.cursor.fg, screen.cursor.bg
-    screen.cursor.fg = icon_fg
-    screen.cursor.bg = icon_bg
+    fg, bg = FG, BG
+    # 绘制图标
+    # 左括号，需要米色前景，深蓝色背景
+    screen.cursor.fg = fg
+    screen.cursor.bg = bg
+    screen.draw(LEFT_SEPARATOR_SYMBOL)
+    # 图标，需要米色背景，米色前景
+    screen.cursor.bg = fg 
     screen.draw(ICON_LEFT)
-    screen.cursor.fg, screen.cursor.bg = fg, bg
-    screen.cursor.x = len(ICON_LEFT)
-    # screen.cursor.bg = 0
-    # screen.cursor.fg = icon_bg
-    # screen.draw(SEPARATOR_SYMBOL)
-    return screen.cursor.x
-
+    # 右括号，需要米色前景，深蓝色背景
+    screen.cursor.bg = bg
+    screen.draw(RIGHT_SEPARATOR_SYMBOL)
+    
+    # 绘制用户名:主机名
+    screen.cursor.fg = fg
+    screen.cursor.bg = bg 
+    screen.draw(LEFT_SEPARATOR_SYMBOL)
+    # 需要设置深蓝色前景，米色背景
+    screen.cursor.bg = fg
+    screen.cursor.fg = bg 
+    screen.draw(get_host_info())
+    screen.cursor.fg = fg 
+    screen.cursor.bg = bg
+    screen.draw(RIGHT_SEPARATOR_SYMBOL)
+    
 
 def _draw_left_status(
     draw_data: DrawData,
@@ -147,86 +145,120 @@ def _draw_left_status(
     is_last: bool,
     extra_data: ExtraData,
 ) -> int:
-    if screen.cursor.x >= screen.columns - right_status_length:
-        return screen.cursor.x
-    screen.cursor.bg = as_rgb(0xff9494) 
-    screen.cursor.fg = as_rgb(0x222831)
-    tab_bg = screen.cursor.bg
-    tab_fg = screen.cursor.fg
-    default_bg = as_rgb(int(draw_data.default_bg))
-    if extra_data.next_tab:
-        next_tab_bg = as_rgb(draw_data.tab_bg(extra_data.next_tab))
-        needs_soft_separator = next_tab_bg == tab_bg
-    else:
-        next_tab_bg = default_bg
-        needs_soft_separator = False
-    if screen.cursor.x <= len(ICON_LEFT):
-        screen.cursor.x = len(ICON_LEFT)
-    screen.draw(" ")
-    screen.cursor.bg = tab_bg
-    draw_title(draw_data, screen, tab, index)
-    if not needs_soft_separator:
-        screen.draw(" ")
-        screen.cursor.fg = tab_bg
-        screen.cursor.bg = next_tab_bg
-        screen.draw(SEPARATOR_SYMBOL)
-    else:
-        prev_fg = screen.cursor.fg
-        if tab_bg == tab_fg:
-            screen.cursor.fg = default_bg
-        elif tab_bg != default_bg:
-            c1 = draw_data.inactive_bg.contrast(draw_data.default_bg)
-            c2 = draw_data.inactive_bg.contrast(draw_data.inactive_fg)
-            if c1 < c2:
-                screen.cursor.fg = default_bg
-        screen.draw(" " + SOFT_SEPARATOR_SYMBOL)
-        screen.cursor.fg = prev_fg
-    end = screen.cursor.x
-    return end
 
-
-def _draw_right_status(screen: Screen, is_last: bool, cells: list) -> int:
-    if not is_last:
-        return 0
-    draw_attributed_string(Formatter.reset, screen)
-    screen.cursor.x = screen.columns - right_status_length
-    # screen.cursor.fg = 0
-    screen.cursor.bg = 0 
-    screen.cursor.fg = as_rgb(0xff9494)
-    screen.draw(RIGHT_SEPARATOR_SYMBOL)
-    screen.cursor.bg = as_rgb(0xff9494) 
-    for color, status in cells:
-        screen.cursor.fg = color
-        screen.draw(status)
-    # screen.cursor.fg = as_rgb(0xff9494)  # 前景色为右侧背景色
+    fg, bg = FG, BG
     
-    screen.cursor.bg = 0
-    return screen.cursor.x
+    # 判断是活动标签还是非活动标签
+    if tab.is_active:
+        screen.cursor.bg = bg 
+        screen.cursor.fg = ACTIVE_BG
+        screen.draw(LEFT_SEPARATOR_SYMBOL)
+
+        screen.cursor.fg = bg 
+        screen.cursor.bg = ACTIVE_BG
+        draw_title(draw_data, screen, tab, index)
+
+        screen.cursor.bg = bg
+        screen.cursor.fg = ACTIVE_BG
+        screen.draw(RIGHT_SEPARATOR_SYMBOL)
+    else:
+        screen.cursor.bg = bg
+        screen.cursor.fg = fg 
+        screen.draw(LEFT_SEPARATOR_SYMBOL)
+
+        screen.cursor.fg = bg 
+        screen.cursor.bg = fg
+        draw_title(draw_data, screen, tab, index)
+
+        screen.cursor.bg = bg
+        screen.cursor.fg = fg 
+        screen.draw(RIGHT_SEPARATOR_SYMBOL)
+    return screen.cursor.x 
 
 
-def _redraw_tab_bar(_):
-    tm = get_boss().active_tab_manager
-    if tm is not None:
-        tm.mark_tab_bar_dirty()
+def _draw_right_status(screen: Screen, is_last: bool) -> int:
+    if not is_last:
+        return 0 
+    draw_attributed_string(Formatter.reset, screen)
+    
+    total_length = (
+        wcswidth(ICON_RIGHT) +
+        wcswidth(get_cpu_usage_proc()) +
+        wcswidth(get_mem_usage()) +
+        wcswidth(get_date()) +
+        wcswidth(LEFT_SEPARATOR_SYMBOL)*4 + 
+        wcswidth(RIGHT_SEPARATOR_SYMBOL) * 4
+    )
 
+    available_length = screen.columns - screen.cursor.x
 
-def get_cpu_usage() -> str:
-    try:
-        with open('/proc/stat', 'r') as f:
-            lines = f.readlines()
-            for line in lines:
-                if line.startswith('cpu '):
-                    fields = line.split()
-                    total = sum(int(x) for x in fields[1:])
-                    idle = int(fields[4])
-                    usage = 100 - (idle * 100 / total)
-                    return f"CPU: {usage:.1f}% "
-    except:
-        return "CPU: N/A "
-    return "CPU: N/A "
+    if available_length < total_length:
+        
+        short_text = get_date()
+        short_width = wcswidth(short_text) + wcswidth(LEFT_SEPARATOR_SYMBOL) * 2 + wcswidth(RIGHT_SEPARATOR_SYMBOL) * 2
 
+        if available_length >= short_width:
+            screen.cursor.bg = BG
+            screen.cursor.fg = RIGHT_BG
+            screen.draw(LEFT_SEPARATOR_SYMBOL)
+            screen.cursor.bg = RIGHT_BG
+            screen.cursor.fg = BG
+            screen.draw(short_text)
+            screen.cursor.bg = BG
+            screen.cursor.fg = RIGHT_BG
+            screen.draw(RIGHT_SEPARATOR_SYMBOL)
+        return screen.cursor.x
+    
+    screen.cursor.x = screen.columns - total_length
+
+    # 绘制图标
+    screen.cursor.bg = BG
+    screen.cursor.fg = RIGHT_BG
+    screen.draw(LEFT_SEPARATOR_SYMBOL)
+    screen.cursor.bg = RIGHT_BG
+    screen.draw(ICON_RIGHT)
+    screen.cursor.bg = BG
+    screen.cursor.fg = RIGHT_BG
+    screen.draw(RIGHT_SEPARATOR_SYMBOL)
+    # 绘制cpu信息
+    screen.cursor.bg = BG
+    screen.cursor.fg = RIGHT_BG
+    screen.draw(LEFT_SEPARATOR_SYMBOL)
+    screen.cursor.fg = BG 
+    screen.cursor.bg = RIGHT_BG
+    screen.draw(get_cpu_usage_proc())
+    screen.cursor.bg = BG
+    screen.cursor.fg = RIGHT_BG
+    screen.draw(RIGHT_SEPARATOR_SYMBOL)
+
+    # 绘制内存信息
+    screen.cursor.bg = BG
+    screen.cursor.fg = RIGHT_BG
+    screen.draw(LEFT_SEPARATOR_SYMBOL)
+    screen.cursor.bg = RIGHT_BG
+    screen.cursor.fg = BG
+    screen.draw(get_mem_usage())
+    screen.cursor.bg = BG
+    screen.cursor.fg = RIGHT_BG
+    screen.draw(RIGHT_SEPARATOR_SYMBOL)
+
+    # 绘制日期时间
+    screen.cursor.bg = BG
+    screen.cursor.fg = RIGHT_BG
+    screen.draw(LEFT_SEPARATOR_SYMBOL)
+    screen.cursor.bg = RIGHT_BG
+    screen.cursor.fg = BG
+    screen.draw(get_date())
+    screen.cursor.bg = BG
+    screen.cursor.fg = RIGHT_BG
+    screen.draw(RIGHT_SEPARATOR_SYMBOL)
+
+    
+
+    return screen.cursor.x 
+
+# 注册窗口变化事件
 timer_id = None
-right_status_length = -1
 
 def draw_tab(
     draw_data: DrawData,
@@ -239,21 +271,8 @@ def draw_tab(
     extra_data: ExtraData,
 ) -> int:
     global timer_id
-    global right_status_length
     if timer_id is None:
         timer_id = add_timer(_redraw_tab_bar, REFRESH_TIME, True)
-    date = datetime.now().strftime("%Y:%m:%d:%H:%M:%S")
-    weekday = WEEKDAYS[datetime.now().weekday()]
-    cells = [
-        (date_color, ICON_RIGHT),
-        (date_color, weekday+" "),
-        # (cpu_color, get_cpu_usage()),
-        # (net_color, get_net_speed()),
-        (date_color, date)
-    ]
-    right_status_length = RIGHT_MARGIN
-    for cell in cells:
-        right_status_length += len(str(cell[1]))
 
     _draw_icon(screen, index)
     _draw_left_status(
@@ -269,6 +288,6 @@ def draw_tab(
     _draw_right_status(
         screen,
         is_last,
-        cells,
     )
     return screen.cursor.x
+
