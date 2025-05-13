@@ -1,1 +1,5 @@
-LAST_EPOCH=20205
+LAST_EPOCH=20220
+EXIT_STATUS=1
+ERROR='error: RPC failed; curl 28 Failed to connect to github.com port 443 after 134106 ms: Could not connect to server
+fatal: expected flush after ref listing
+There was an error updating. Try again later?'
